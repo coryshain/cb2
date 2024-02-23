@@ -578,6 +578,7 @@ class State(object):
                 self._announce_action(card_select_action)
 
         if self._map_provider.selected_valid_set():
+            self._map_provider.increment_custom_targets()
             self._current_set_invalid = False
             cards_changed = True
 

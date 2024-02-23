@@ -496,10 +496,14 @@ def draw_scenario(display: "GameDisplay", scenario: Scenario):
     cards = [Card.FromProp(prop) for prop in scenario.prop_update.props]
     if scenario.target_card_ids:
         for card in cards:
-            if card.id in scenario.target_card_ids:
-                card.selected = True
-                card.border_color
-            else:
+            found = False
+            for target_card_ids in scenario.target_card_ids:
+                if card.id in target_card_ids:
+                    card.selected = True
+                    card.border_color
+                    found = True
+                    break
+            if found:
                 card.selected = False
     props = [card.prop() for card in cards]
 

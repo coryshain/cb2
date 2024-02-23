@@ -523,13 +523,13 @@ def edit_scenario(scenario: Scenario) -> Scenario:
                         if active_card is not None:
                             for i, prop in enumerate(scenario.prop_update.props):
                                 if prop.prop_info.location == tile.cell.coord:
-                                    if (scenario.target_card_ids is not None) and (
-                                        prop.id in scenario.target_card_ids
-                                    ):
-                                        scenario.target_card_ids.remove(prop.id)
-                                    # Remove the old prop.
-                                    scenario.prop_update.props.pop(i)
-                                    break
+                                    if scenario.target_card_ids is not None:
+                                        for target_card_ids in scenario.target_card_ids:
+                                            if prop.id in target_card_ids:
+                                                target_card_ids.remove(prop.id)
+                                            # Remove the old prop.
+                                            scenario.prop_update.props.pop(i)
+                                            break
                             if active_number > 0:
                                 # Set the coordinate.
                                 new_card = copy.deepcopy(active_card)
@@ -540,9 +540,9 @@ def edit_scenario(scenario: Scenario) -> Scenario:
                                 if active_attribute == CardAttribute.GOAL:
                                     if scenario.target_card_ids is None:
                                         scenario = dataclasses.replace(
-                                            scenario, target_card_ids=[]
+                                            scenario, target_card_ids=[[]]
                                         )
-                                    scenario.target_card_ids.append(new_card.id)
+                                    scenario.target_card_ids[0].append(new_card.id)
                         found_map_tile = True
                         break
                 if not found_tool and not found_map_tile and not found_card:

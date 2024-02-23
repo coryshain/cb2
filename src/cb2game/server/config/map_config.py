@@ -24,6 +24,7 @@ class MapConfig(DataClassJSONMixin):
 
     map_width: int = 25
     map_height: int = 25
+    number_of_cards: int = 21
     # These are specified as tuples (min, max) (integers only)
     number_of_mountains_range: Tuple[int, int] = (3, 3)
     number_of_cities_range: Tuple[int, int] = (3, 4)

@@ -937,7 +937,7 @@ class MapProvider(object):
         map_update: MapUpdate = None,
         cards: List[card.Card] = None,
         map_config: MapConfig = MapConfig(),
-        custom_targets: List[int] = None,  # List of target card IDs.
+        custom_targets: List[List[int]] = None,  # List of target card IDs.
     ):
         """Creates a MapProvider. This handles generating the map, updating the
         map, doing collision detection, generating cards, and detecting when a
@@ -954,8 +954,16 @@ class MapProvider(object):
         scenario ends.
         """
         self._custom_targets = None
+        self._custom_target_set_idx = 0
         if (custom_targets is not None) and (len(custom_targets) > 0):
-            self._custom_targets = set(custom_targets)
+            if isinstance(custom_targets[0], int):
+                custom_targets = [custom_targets]
+            _custom_targets = []
+            for __custom_targets in custom_targets:
+                if len(__custom_targets):
+                    _custom_targets.append(__custom_targets)
+            custom_targets = [set(x) for x in _custom_targets]
+            self._custom_targets = custom_targets
         if map_config is None:
             map_config = GlobalConfig().map_config
         if map_type == MapType.RANDOM:
@@ -1030,7 +1038,7 @@ class MapProvider(object):
                 ]
             ]
 
-            number_of_cards = 21
+            number_of_cards = map_config.number_of_cards
             number_of_sets = math.ceil(number_of_cards / 3)
             card_spawn_locations = self.choose_card_spawn_locations(number_of_sets * 3)
 
@@ -1137,7 +1145,12 @@ class MapProvider(object):
     def custom_targets(self):
         if self._custom_targets is None:
             return []
-        return self._custom_targets
+        return self._custom_targets[self._custom_target_set_idx]
+
+    def increment_custom_targets(self):
+        if self.custom_targets():
+            if self._custom_target_set_idx < len(self._custom_targets) - 1:
+                self._custom_target_set_idx += 1
 
     def set_selected(self, card_id, selected):
         for idx, card in enumerate(self._cards):
@@ -1216,8 +1229,9 @@ class MapProvider(object):
         targets are defined, just checks if any non-target cards are selected.
         """
         if self._custom_targets is not None:
+            custom_targets = self.custom_targets()
             return any(
-                card.id not in self._custom_targets for card in self.selected_cards()
+                card.id not in custom_targets for card in self.selected_cards()
             )
         shapes = set()
         colors = set()
@@ -1234,8 +1248,9 @@ class MapProvider(object):
 
     def selected_valid_set(self):
         if self._custom_targets is not None:
+            custom_targets = self.custom_targets()
             return (
-                len(self.selected_cards()) == len(self._custom_targets)
+                len(self.selected_cards()) == len(custom_targets)
                 and not self.selected_cards_collide()
             )
         return len(self.selected_cards()) == 3 and not self.selected_cards_collide()

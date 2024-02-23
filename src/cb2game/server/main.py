@@ -1258,6 +1258,7 @@ async def receive_agent_updates(request, ws, lobby):
 
 @routes.get("/player_endpoint")
 async def PlayerEndpoint(request):
+
     if "lobby_name" in request.query:
         lobby = GetLobby(request.query["lobby_name"])
         if lobby == None:
