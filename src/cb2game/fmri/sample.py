@@ -25,8 +25,8 @@ HZ = 10
 HOST = 'http://localhost:8080'
 LOBBY = 'open'
 MAX_CARDS = None
-N_TARGETS = 25
-N_DISTRACTORS = 2
+N_TARGETS = 20
+N_DISTRACTORS = 4
 CARD_COVERS = True
 
 

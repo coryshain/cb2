@@ -9,7 +9,7 @@ analysis_game_id_ranges: []
 http_port: 8080
 map_cache_size: 500
 comment: Default config
-card_covers: true
+card_covers: false
 fog_start: 13
 fog_end: 20
 fps_limit: -1
@@ -419,7 +419,7 @@ map_config: !!python/object:cb2game.server.config.map_config.MapConfig
   rng_seed: null
   map_width: 25
   map_height: 25
-  number_of_cards: 100
+  number_of_cards: 125
   number_of_mountains_range: !!python/tuple
   - 4
   - 8
