@@ -65,7 +65,7 @@ ASSET_TO_ID=dict(
 )
 ID_TO_ASSET = {ASSET_TO_ID[k]: k for k in ASSET_TO_ID}
 LANDMARK_NAME_TO_TEXT = dict(
-    GROUND_TILE_ROCKY='a rock pile',
+    GROUND_TILE_ROCKY='a rock',
     GROUND_TILE_STONES='a rock',
     GROUND_TILE_STONES_GREENBUSH='a rock',
     GROUND_TILE_STONES_BROWNBUSH='a rock',
@@ -88,15 +88,15 @@ LANDMARK_NAME_TO_TEXT = dict(
     GROUND_TILE_HOUSE_TRIPLE_RED='a tall red house',
     GROUND_TILE_HOUSE_TRIPLE_BLUE='a tall blue house',
     STREETLIGHT='a streetlight',
-    SNOWY_GROUND_TILE_TREES_2='a snowy tree',
-    SNOWY_GROUND_TILE_ROCKY='a snowy rock pile',
-    SNOWY_GROUND_TILE_STONES='a snowy rock',
-    SNOWY_MOUNTAIN_TILE_TREE='a snowy tree',
-    STREETLIGHT_FOILAGE='a streetlight',
-    STREETLIGHT_BIG='a streetlight',
-    STREETLIGHT_BUSHES='a streetlight',
-    STREETLIGHT_ROCKS='a streetlight',
-    STREETLIGHT_WIDE='a streetlight',
+    SNOWY_GROUND_TILE_TREES_2='a tree',
+    SNOWY_GROUND_TILE_ROCKY='a rock',
+    SNOWY_GROUND_TILE_STONES='a rock',
+    SNOWY_MOUNTAIN_TILE_TREE='a tree',
+    STREETLIGHT_FOILAGE='a lamppost',
+    STREETLIGHT_BIG='a lamppost',
+    STREETLIGHT_BUSHES='a lamppost',
+    STREETLIGHT_ROCKS='a lamppost',
+    STREETLIGHT_WIDE='a lamppost',
 )
 SHAPES = [
     ('plus', 'plusses'),
@@ -250,15 +250,21 @@ def create_instructions(scenario, hard=False):
     return instructions
 
 
-def set_difficulty(scenario, task_hard=False, lang_hard=False, n_landmarks=N_LANDMARKS):
-    if task_hard:
+def set_difficulty(scenario, task_difficulty=False, linguistic_complexity=False):
+    if task_difficulty > 2:
         scenario['map']['fog_start'] = 2
         scenario['map']['fog_end'] = 8
+    elif task_difficulty > 1:
+        scenario['map']['fog_start'] = 3
+        scenario['map']['fog_end'] = 12
+    elif task_difficulty > 0:
+        scenario['map']['fog_start'] = 4
+        scenario['map']['fog_end'] = 16
     else:
         scenario['map']['fog_start'] = 30
-        scenario['map']['fog_end'] = 31
+        scenario['map']['fog_end'] = 120
 
-    instructions = create_instructions(scenario, hard=lang_hard)
+    instructions = create_instructions(scenario, hard=linguistic_complexity)
     objectives = []
     for instruction in instructions:
         objective = OBJECTIVE.copy()

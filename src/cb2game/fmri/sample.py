@@ -120,11 +120,12 @@ def sample_landmarks(n_landmarks, target_card, assets, available_cards, temp=1):
     excluded_distractor_card_ids = set()
 
     assets_used = []
-    assets_by_type = {}
+    assets_by_description = {}
     for asset in assets:
-        if asset['asset_id'] not in assets_by_type:
-            assets_by_type[asset['asset_id']] = []
-        assets_by_type[asset['asset_id']].append(asset)
+        asset_description = LANDMARK_NAME_TO_TEXT[ID_TO_ASSET[asset['asset_id']]]
+        if asset_description not in assets_by_description:
+            assets_by_description[asset_description] = []
+        assets_by_description[asset_description].append(asset)
 
     for i in range(n_landmarks):
         _assets = [
@@ -137,13 +138,13 @@ def sample_landmarks(n_landmarks, target_card, assets, available_cards, temp=1):
         landmark, distance = s['asset'], s['d']
         landmarks.append((landmark, distance))
         assets_used.append(landmark)
-        if i == 0:  # Find and exclude any other cards that happen to match the landmarks
+        if i == 0:  # Find and exclude any other cards that happen to match the sequence of landmark descriptions
             for card_id in available_cards:
                 reference_loc = available_cards[card_id]['prop_info']['location']
                 match = False
                 for landmark, d in landmarks:
-                    asset_type = landmark['asset_id']
-                    candidates = assets_by_type[asset_type]
+                    asset_description = LANDMARK_NAME_TO_TEXT[ID_TO_ASSET[landmark['asset_id']]]
+                    candidates = assets_by_description[asset_description]
                     match = False
                     for candidate in candidates:
                         _d = get_distance(reference_loc, candidate['cell']['coord'])
@@ -250,11 +251,15 @@ def sample_runset(
             execute = False
         if execute:
             scenario = sample_scenario(browser, host=host, lobby=lobby)
-            for task_difficulty in range(2):
+            for task_difficulty in range(4):
                 for linguistic_complexity in range(2):
                     scenario_id = 'scenario_%04d_t%d_l%d' % (i + 1, task_difficulty, linguistic_complexity)
                     scenario['scenario_id'] = 'trial_id'
-                    scenario = set_difficulty(scenario, task_hard=task_difficulty, lang_hard=linguistic_complexity)
+                    scenario = set_difficulty(
+                        scenario,
+                        task_difficulty=task_difficulty,
+                        linguistic_complexity=linguistic_complexity
+                    )
                     path = os.path.join(runset_path, '%s.json' % scenario_id)
                     with open(path, 'w') as f:
                         json.dump(scenario, f, indent=2)
