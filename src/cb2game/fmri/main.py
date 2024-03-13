@@ -11,7 +11,7 @@ import pandas as pd
 
 from cb2game.pyclient.remote_client import RemoteClient
 from cb2game.pyclient.game_endpoint import Action
-from cb2game.fmri.utils import OBJECTIVE, MAX_TRIAL_DURATION, MAX_RUN_DURATION, open_browser
+from cb2game.fmri.utils import OBJECTIVE, N_TRIALS, MAX_TRIAL_DURATION, MAX_RUN_DURATION, open_browser
 
 
 logging.basicConfig(level=logging.INFO)
@@ -19,7 +19,7 @@ logger = logging.getLogger(__file__)
 FONT_SIZE = 75
 HOST = "http://localhost:8080"
 LOBBY = "scenario-lobby"
-MATERIALS_DIR = 'materials'
+MATERIALS_DIR = 'materials_long'
 MAX_TARGETS = None
 KEYBOARD = keyboard.Controller()
 
@@ -39,6 +39,7 @@ class Trial:
     def __init__(
             self,
             scenario_path,
+            state=None,
             subject_kwargs=None,
             display=None,
             max_targets=MAX_TARGETS,
@@ -46,6 +47,7 @@ class Trial:
     ):
         logger.info(f"Loading scenario...")
         self.scenario_path = scenario_path
+        self.state = state
         self.subject_kwargs = subject_kwargs
         if display is None:
             self.display = Display()
@@ -88,6 +90,24 @@ class Trial:
         if self.max_targets:
             scenario_data['target_card_ids'] = scenario_data['target_card_ids'][:self.max_targets]
             scenario_data['objectives'] = scenario_data['objectives'][:self.max_targets]
+
+        return scenario_data
+
+    def update_from_state(
+            self,
+            scenario_data
+    ):
+        state = self.state.to_dict()
+        scenario_data['prop_update']['props'] = state['props']
+        scenario_data['turn_state']['score'] = state['turn_state']['score']
+        scenario_data['target_card_ids'] = scenario_data['target_card_ids'][state['turn_state']['score']:]
+        scenario_data['objectives'] = scenario_data['objectives'][state['turn_state']['score']:]
+        location = state['actors'][0]['location']
+        rotation_degrees = state['actors'][0]['rotation_degrees']
+        for actor in scenario_data['actor_state']['actors']:
+            if actor['actor_role'] == 1:
+                actor['location'] = location
+                actor['rotation_degrees'] = rotation_degrees
 
         return scenario_data
 
@@ -151,6 +171,8 @@ class Trial:
             objective['text'] = instruction
             objectives = [objective]
         scenario_data['objectives'] = objectives
+        if self.state is not None:
+            scenario_data = self.update_from_state(scenario_data)
 
         scenario_data_json = json.dumps(scenario_data)
 
@@ -178,6 +200,7 @@ class Trial:
         self.start_time = time.time()
 
         while not self.over:
+            game_state = game.step(Action.NoopAction())
             (
                 map,
                 cards,
@@ -185,7 +208,7 @@ class Trial:
                 instructions,
                 actors,
                 live_feedback,
-            ) = game.step(Action.NoopAction())
+            ) = game_state
 
             cards_selected = set()
             cards_unselected = set()
@@ -227,6 +250,8 @@ class Trial:
         game.queued_messages = []
         listener.stop()
 
+        return game_state
+
     def reset(self):
         self.over = False
         self.success = False
@@ -257,10 +282,12 @@ class Run:
     def __init__(
             self,
             scenario_paths,
+            n_trials=N_TRIALS,
             subject_kwargs=None,
             display=None
     ):
         self.scenario_paths = scenario_paths
+        self.n_trials = n_trials
         self.subject_kwargs = subject_kwargs
         if display is None:
             self.display = Display()
@@ -288,24 +315,31 @@ class Run:
             deadline=None
 
         for i, scenario_path in enumerate(self.scenario_paths):
-            trial = Trial(scenario_path, subject_kwargs=self.subject_kwargs, display=self.display)
-            trial.run(
-                browser,
-                host=host,
-                lobby=lobby,
-                static_instructions=static_instructions,
-                deadline=deadline
-            )
-            row = trial.results()
-            success = row['success']
-            interrupted = row['interrupted']
-            row['scenario_path'] = scenario_path
-            behavioral.append(row)
-            time.sleep(0.3)
-            self.display.show_result(success, interrupted)
-            time.sleep(1)
-            if interrupted:
-                break
+            game_state = None
+            for j in range(self.n_trials):
+                trial = Trial(
+                    scenario_path,
+                    state=game_state,
+                    subject_kwargs=self.subject_kwargs,
+                    display=self.display
+                )
+                game_state = trial.run(
+                    browser,
+                    host=host,
+                    lobby=lobby,
+                    static_instructions=static_instructions,
+                    deadline=deadline
+                )
+                row = trial.results()
+                success = row['success']
+                interrupted = row['interrupted']
+                row['scenario_path'] = scenario_path
+                behavioral.append(row)
+                time.sleep(0.3)
+                # self.display.show_result(success, interrupted)
+                # time.sleep(1)
+                if interrupted:
+                    break
         behavioral = pd.DataFrame(behavioral)
         self.behavioral = behavioral
 

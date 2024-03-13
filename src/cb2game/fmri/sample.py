@@ -14,8 +14,8 @@ import pandas as pd
 
 from cb2game.pyclient.remote_client import RemoteClient
 from cb2game.pyclient.game_endpoint import Action
-from cb2game.fmri.utils import N_LANDMARKS, ID_TO_ASSET, LANDMARK_NAME_TO_TEXT, N_RUNSETS, N_TRIALS, MAX_TRIAL_DURATION,\
-    open_browser, get_distance, set_difficulty
+from cb2game.fmri.utils import N_LANDMARKS, ID_TO_ASSET, LANDMARK_NAME_TO_TEXT, N_RUNSETS, N_SCENARIOS, \
+    MAX_TRIAL_DURATION, MAX_SCENARIO_DURATION, open_browser, get_distance, set_difficulty
 
 
 logging.basicConfig(level=logging.INFO)
@@ -25,8 +25,8 @@ HZ = 10
 HOST = 'http://localhost:8080'
 LOBBY = 'open'
 MAX_CARDS = None
-N_TARGETS = 20
-N_DISTRACTORS = 4
+N_TARGETS = 18
+N_DISTRACTORS = 3
 CARD_COVERS = True
 
 
@@ -75,7 +75,7 @@ def clean_scenario(scenario, card_covers=CARD_COVERS):
         elif actor['actor_role'] == 1:
             actor['asset_id'] = 2
 
-    scenario['duration_s'] = MAX_TRIAL_DURATION
+    scenario['duration_s'] = MAX_SCENARIO_DURATION
 
     return scenario
 
@@ -146,11 +146,10 @@ def sample_landmarks(n_landmarks, target_card, assets, available_cards, temp=1):
                     candidates = assets_by_type[asset_type]
                     match = False
                     for candidate in candidates:
-                        if candidate != landmark:
-                            _d = get_distance(reference_loc, candidate['cell']['coord'])
-                            if d == _d:
-                                match = True
-                                break
+                        _d = get_distance(reference_loc, candidate['cell']['coord'])
+                        if d == _d:
+                            match = True
+                            break
                     if not match:
                         break
                     reference_loc = landmark['cell']['coord']
@@ -230,13 +229,13 @@ def resample_scenario(
 def sample_runset(
         name,
         browser,
-        n=N_TRIALS,
+        n_scenarios=N_SCENARIOS,
         host=HOST,
         lobby=LOBBY,
         outdir='scenarios_sampled',
         overwrite=False
 ):
-    for i in range(n):
+    for i in range(n_scenarios):
         logger.info(f"Sampling {name}, trial {i + 1}")
         runset_path = os.path.join(outdir, name)
         if not os.path.exists(runset_path):
@@ -264,7 +263,7 @@ def sample_runset(
 def main(
         browser,
         n_runsets=N_RUNSETS,
-        n_trials=N_TRIALS,
+        n_scenarios=N_SCENARIOS,
         host=HOST,
         lobby=LOBBY,
         outdir='materials',
@@ -275,7 +274,7 @@ def main(
         sample_runset(
             name,
             browser,
-            n=n_trials,
+            n_scenarios=N_SCENARIOS,
             host=host,
             lobby=lobby,
             outdir=outdir,

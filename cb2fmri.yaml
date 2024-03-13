@@ -417,19 +417,19 @@ google_oauth_client_id: ''
 exception_prefix: exceptions/
 map_config: !!python/object:cb2game.server.config.map_config.MapConfig
   rng_seed: null
-  map_width: 25
-  map_height: 25
-  number_of_cards: 125
+  map_width: 15
+  map_height: 15
+  number_of_cards: 100
   number_of_mountains_range: !!python/tuple
-  - 4
-  - 8
+  - 2
+  - 6
   number_of_cities_range: &id001 !!python/tuple
-  - 4
-  - 8
+  - 2
+  - 6
   number_of_lakes_range: *id001
   number_of_outposts_range: !!python/tuple
-  - 4
-  - 8
+  - 2
+  - 6
   path_connection_distance: 4
   ground_tiles:
   - GROUND_TILE
@@ -448,9 +448,7 @@ map_config: !!python/object:cb2game.server.config.map_config.MapConfig
   - GROUND_TILE_TREE_SNOW
   - GROUND_TILE_TREE_DARKGREEN
   - GROUND_TILE_TREE_SOLIDBROWN
-  - GROUND_TILE_TREES
   - GROUND_TILE_TREES_2
-  - GROUND_TILE_FOREST
   streetlight_tiles:
   - GROUND_TILE_STREETLIGHT
   - GROUND_TILE_STREETLIGHT_FOILAGE

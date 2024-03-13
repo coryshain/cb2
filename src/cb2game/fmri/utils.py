@@ -142,8 +142,10 @@ HEX_TO_CARTESIAN = np.array(
 )
 N_LANDMARKS = 2
 N_RUNSETS = 8
-N_TRIALS = 3
-MAX_TRIAL_DURATION = 480
+N_TRIALS = 12
+N_SCENARIOS = 3
+MAX_TRIAL_DURATION = 30
+MAX_SCENARIO_DURATION = 360
 MAX_RUN_DURATION = 100000000
 
 
@@ -216,7 +218,7 @@ def create_instructions(scenario, hard=False):
         instruction += '{continuation}'
 
         assets_descriptions_used = set()
-        for asset, distance in landmarks:
+        for i, (asset, distance) in enumerate(landmarks):
             asset_id = asset['asset_id']
             asset_name = ID_TO_ASSET[asset_id]
             asset_text = LANDMARK_NAME_TO_TEXT[asset_name]
@@ -235,7 +237,7 @@ def create_instructions(scenario, hard=False):
             #     preposition = PREPOSITIONS_NEAR[np.random.randint(len(PREPOSITIONS_NEAR))]
             else:
                 preposition = '%d tiles from' % distance
-            if hard:  # Object embedding
+            if hard and i == 0:  # Object embedding, only at top level RC
                 continuation = f' that {asset_text}{{continuation}} is {preposition}'
             else:
                 continuation = f' that is {preposition} {asset_text}{{continuation}}'
