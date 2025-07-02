@@ -38,7 +38,7 @@ The experiment driver program is run as a module from the parent directory. Open
 python -m cb2game.fmri.main <ARGS>
 ```
 
-<ARGS> should contain parameters for subject_id, run_number, run_set, task_difficulty, and linguistic_complexity.
+`<ARGS>` should contain parameters for subject_id, run_number, run_set, task_difficulty, and linguistic_complexity.
 
 The experiment driver uses pygame 2.1.2, which can cause problems on ARM Macs. The game will still run properly with pygame 2.1.3. If running the experiment causes an error, try installing the pynput package independently with the following command:
 ```bash
