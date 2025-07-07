@@ -19,7 +19,7 @@ logger = logging.getLogger(__file__)
 FONT_SIZE = 75
 HOST = "http://localhost:8080"
 LOBBY = "scenario-lobby"
-MATERIALS_DIR = 'materials_long'
+MATERIALS_DIR = 'materials'
 MAX_TARGETS = None
 KEYBOARD = keyboard.Controller()
 
@@ -64,8 +64,7 @@ class Trial:
         self.success = False
         self.interrupted = False
         self.start_time = None
-        self.target_start_times = {}
-        self.target_found_times = {}
+        self.target_found_times = []
         self.targets_found = 0
         self.n_moves = 0
         self.duration = None
@@ -173,6 +172,7 @@ class Trial:
         scenario_data['objectives'] = objectives
         if self.state is not None:
             scenario_data = self.update_from_state(scenario_data)
+        n_cards_prev = len(scenario_data['prop_update']['props'])
 
         scenario_data_json = json.dumps(scenario_data)
 
@@ -181,11 +181,6 @@ class Trial:
         scenario_data['turn_state']['game_start'] = now
         scenario_data['turn_state']['turn_end'] = now + timedelta(seconds=3600)
         game.step(Action.LoadScenario(scenario_data_json))
-        target_card_ids = scenario_data.get('target_card_ids', [])
-        target_card_ids = [x[0] for x in target_card_ids]
-        target_card_id = target_card_ids.pop(0)
-        target_card_id_set = set(target_card_ids)
-        target_card_ix = 1
         logger.info(f"Loaded...")
 
         listener = keyboard.Listener(
@@ -210,39 +205,24 @@ class Trial:
                 live_feedback,
             ) = game_state
 
-            cards_selected = set()
-            cards_unselected = set()
-            for card in cards:
-                if card.card_init.selected:
-                    cards_selected.add(card.id)
-                else:
-                    cards_unselected.add(card.id)
-            if (not (cards_unselected & target_card_id_set) and   # No target cards are unselected
-                    not (cards_selected - target_card_id_set)):   # No non-target cards are selected
-                self.over = True
-                self.success = True
+            n_cards = len(cards)
+            if n_cards < n_cards_prev:
+                t = time.time
+                self.target_found_times.append(t)
+                self.targets_found += 1
+                n_cards_prev = n_cards
+                print('Pressing d')
                 KEYBOARD.press('d')
                 KEYBOARD.release('d')
+            n_instructions = len([x for x in instructions if not x.completed])
+            if not n_instructions:
+                self.over = True
+                self.success = True
             elif game.over():
                 self.over = True
-                self.success = (not (cards_unselected & target_card_id_set) and
-                                not (cards_selected - target_card_id_set))
             elif deadline and time.time() > deadline:
                 self.over = True
                 self.interrupted = True
-            elif not static_instructions:
-                if target_card_id in cards_selected:
-                    t = time.time
-                    self.target_found_times['target_%s_found_time' % target_card_ix] = t
-                    target_card_ix += 1
-                    self.target_start_times['target_%s_start_time' % target_card_ix] = t
-                    KEYBOARD.press('d')
-                    KEYBOARD.release('d')
-                    if len(target_card_ids):
-                        target_card_id = target_card_ids.pop(0)
-                    else:
-                        target_card_id = None
-            self.targets_found = len(target_card_id_set & cards_selected)
             self.n_moves += 1
 
         self.duration = time.time() - self.start_time
@@ -257,8 +237,7 @@ class Trial:
         self.success = False
         self.interrupted = False
         self.start_time = None
-        self.target_start_times = {}
-        self.target_found_times = {}
+        self.target_found_times = []
         self.targets_found = 0
         self.n_moves = 0
         self.duration = None
@@ -270,10 +249,9 @@ class Trial:
             start_time=self.start_time,
             duration=self.duration,
             targets_found=self.targets_found,
+            target_found_times=self.target_found_times,
             n_moves=self.n_moves
         )
-        out.update(self.target_start_times)
-        out.update(self.target_found_times)
 
         return out
 
@@ -532,7 +510,7 @@ if __name__ == "__main__":
     run_set = args.run_set
     if not run_set.startswith('runset'):
         run_set = f'runset_{run_set}'
-    task_difficulty = int(args.task_difficulty > 0)
+    task_difficulty = int(args.task_difficulty)
     linguistic_complexity = int(args.linguistic_complexity > 0)
     materials_dir = args.materials_dir
     n_trials = args.n_trials
