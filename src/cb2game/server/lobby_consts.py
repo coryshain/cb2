@@ -67,5 +67,5 @@ class LobbyInfo(DataClassJSONMixin):
     # If this is enabled, then the game will require a button press (P) to
     # select cards. Otherwise, cards will not be selected when a player walks
     # over them.
-    select_requires_button_press: bool = False
+    select_requires_button_press: bool = True
     card_covers: bool = False
