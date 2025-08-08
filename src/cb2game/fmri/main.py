@@ -946,14 +946,123 @@ def restore_unity_focus_after_rating(browser):
            logger.warning(f"Could not restore Unity focus: {e}")
 
 
+def practice_arrow_keys(display=None):
+    """
+    Practice function for MRI buttonbox controls.
+    Tests up (2), back (3), right (7), left (8), and select (1).
+    """
+    if display is None:
+        display = Display()
 
+    logger.info("Starting buttonbox practice")
 
-def practice_arrow_keys():
-   """Placeholder for the practice function - implement for use with buttonboxes in MRI, incl photos of buttons"""
-   logger.info("Practice arrow keys function called")
-   pass
+    controls = [
+        {"name": "UP", "key": "2", "pygame_key": pygame.K_2},
+        {"name": "BACK", "key": "3", "pygame_key": pygame.K_3},
+        {"name": "RIGHT", "key": "7", "pygame_key": pygame.K_7},
+        {"name": "LEFT", "key": "8", "pygame_key": pygame.K_8},
+        {"name": "SELECT", "key": "1", "pygame_key": pygame.K_1}  # Using key 1 for select (right thumb)
+    ]
 
+    def show_instruction(text, color="black", wait_for_key=False):
+        display.clear()
+        text_surface = display.font.render(text, True, pygame.Color(color))
+        text_rect = text_surface.get_rect(center=(display.W / 2, display.H / 2))
+        display.screen.blit(text_surface, text_rect)
+        pygame.display.flip()
 
+        if wait_for_key:
+            while True:
+                for event in pygame.event.get():
+                    if event.type == pygame.KEYDOWN or event.type == pygame.QUIT:
+                        return
+                pygame.time.wait(10)
+
+    # Show intro
+    display.show()
+    show_instruction("BUTTONBOX PRACTICE - Press any button to start", wait_for_key=True)
+
+    completed = []
+
+    # Test each control - stay on each until successful
+    for i, control in enumerate(controls):
+        logger.info(f"Testing {control['name']} control")
+
+        button_completed = False
+
+        while not button_completed:
+            # Show prompt with progress and button info
+            display.clear()
+
+            # Progress
+            progress = f"Test {i + 1} of {len(controls)}"
+            progress_surface = display.font.render(progress, True, pygame.Color("gray"))
+            display.screen.blit(progress_surface, (display.W // 2 - progress_surface.get_width() // 2, 80))
+
+            # Main instruction
+            instruction = f"Press the {control['name']} button"
+            instruction_surface = display.font.render(instruction, True, pygame.Color("black"))
+            display.screen.blit(instruction_surface, (display.W // 2 - instruction_surface.get_width() // 2, display.H // 2 - 50))
+
+            # Button key info
+            key_info = f"(Buttonbox key: {control['key']})"
+            key_surface = pygame.font.Font(pygame.font.get_default_font(), 30).render(key_info, True, pygame.Color("gray"))
+            display.screen.blit(key_surface, (display.W // 2 - key_surface.get_width() // 2, display.H // 2 + 20))
+
+            # TODO: Take button pictures at CNI and input their paths here
+            """
+            try:
+                button_image = pygame.image.load(f"button_images/{control['name'].lower()}_button.png")
+                button_image = pygame.transform.scale(button_image, (150, 150))
+                image_rect = (display.W // 2 - 75, display.H // 2 + 80)
+                display.screen.blit(button_image, image_rect)
+            except pygame.error:
+                # Placeholder if image not found
+            """
+            placeholder = f"[{control['name']} BUTTON IMAGE]"
+            placeholder_surface = pygame.font.Font(pygame.font.get_default_font(), 40).render(placeholder, True,
+                                                                                              pygame.Color("orange"))
+            display.screen.blit(placeholder_surface,
+                                (display.W // 2 - placeholder_surface.get_width() // 2, display.H // 2 + 100))
+
+            pygame.display.flip()
+
+            # Wait for correct button (no timeout - stay until correct)
+            waiting_for_correct = True
+            while waiting_for_correct:
+                for event in pygame.event.get():
+                    if event.type == pygame.KEYDOWN:
+                        key_name = pygame.key.name(event.key)
+                        logger.info(f"Key pressed during {control['name']} test: {event.key} ({key_name})")
+
+                        if event.key == control['pygame_key']:
+                            # Correct button
+                            completed.append(control['name'])
+                            button_completed = True
+                            waiting_for_correct = False
+                            logger.info(f"Correct {control['name']} button pressed")
+
+                            show_instruction(f"{control['name']} works!", "green")
+                            pygame.time.wait(1000)
+                            break
+                        else:
+                            # Wrong button - show error and continue waiting
+                            logger.info(f"Wrong button pressed for {control['name']}: {event.key} ({key_name})")
+                            show_instruction(f"Wrong button! Press {control['key']} for {control['name']}", "red")
+                            pygame.time.wait(1500)
+                            waiting_for_correct = False  # Exit inner loop to redraw prompt
+                            break
+                    elif event.type == pygame.QUIT:
+                        return False
+
+                if waiting_for_correct:
+                    pygame.time.wait(10)
+
+    # Show completion
+    show_instruction("PRACTICE COMPLETE! All buttons work", "green", wait_for_key=True)
+    logger.info("Buttonbox practice completed successfully - all buttons tested")
+
+    return True
 
 
 def run_palindrome_behavioral(
@@ -967,6 +1076,7 @@ def run_palindrome_behavioral(
        display=None,
        host=HOST,
        lobby=LOBBY,
+       no_test_button_box=False,
 ):
    import random
    if display is None:
@@ -999,6 +1109,14 @@ def run_palindrome_behavioral(
        for missing in missing_files:
            logger.error(f"  - {missing}")
        raise FileNotFoundError(f"Cannot run experiment - missing scenario files: {missing_files}")
+
+    # TEMPORARILY HERE in behavioral mode for bug testing on buttonbox testing intro
+   if not no_test_button_box:
+       logger.info("Testing buttonbox controls before starting behavioral experiment...")
+       practice_success = practice_arrow_keys(display)
+       if not practice_success:
+           logger.warning("Buttonbox practice was not fully successful, but continuing with experiment")
+
 
    # Randomize the initial 4 scenario orders
    randomized_conditions = random.sample(conditions, k=4)
@@ -1142,7 +1260,9 @@ def normal_main(
 
    # ask the participant to test their controls - need to implement this for in the scanner
    if not no_test_button_box:
-       practice_arrow_keys()
+       practice_success = practice_arrow_keys(display)  # ADD display parameter
+       if not practice_success:
+           logger.warning("Buttonbox practice was not fully successful, but continuing with experiment")
 
    # validate that thr scenario files exist for the specified condition
    conditions = [(task_difficulty, linguistic_complexity)]
@@ -1257,6 +1377,7 @@ if __name__ == "__main__":
                display=display,
                host=host,
                lobby=lobby,
+               no_test_button_box=no_test_button_box, # TEMPORARY for buttonbox mode bug testing
            )
        else:
            client = normal_main(
