@@ -95,14 +95,14 @@ def validate_scenario_files(materials_dir, run_set, conditions):
 
 class Trial:
    BUTTONBOX_MAP = {
-       '1': keyboard.Key.up,
-       '2': 's',
-       '3': keyboard.Key.left,
-       '4': keyboard.Key.right,
-       'g': keyboard.Key.up,
-       'f': 's',
-       'l': keyboard.Key.left,
-       ';': keyboard.Key.right,
+       '1': 's',  # R thumb
+       '2': keyboard.Key.up,  # R index
+       '3': keyboard.Key.down,  # R middle
+       '7': keyboard.Key.right,  # L index
+       '8': keyboard.Key.left,  # L middle
+
+       # Spacebar mapping for selection
+       ' ': 's',
    }
 
 
@@ -194,7 +194,8 @@ class Trial:
 
 
        except AttributeError:
-           pass
+           if key == keyboard.Key.space:
+               KEYBOARD.press('s')  # selection for special keys
 
 
    def on_buttonbox_release(self, key):
@@ -203,7 +204,8 @@ class Trial:
            if char in Trial.BUTTONBOX_MAP:
                KEYBOARD.release(Trial.BUTTONBOX_MAP[char])
        except AttributeError:
-           pass
+           if key == keyboard.Key.space:
+               KEYBOARD.release('s')
 
 
    def run(
