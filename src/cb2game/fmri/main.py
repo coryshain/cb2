@@ -190,6 +190,7 @@ class Trial:
        try:
            char = key.char
            if char in Trial.BUTTONBOX_MAP:
+               print(char, 'down')
                KEYBOARD.press(Trial.BUTTONBOX_MAP[char])
 
 
@@ -202,6 +203,7 @@ class Trial:
        try:
            char = key.char
            if char in Trial.BUTTONBOX_MAP:
+               print(char, 'up')
                KEYBOARD.release(Trial.BUTTONBOX_MAP[char])
        except AttributeError:
            if key == keyboard.Key.space:
@@ -274,7 +276,8 @@ class Trial:
 
        listener = keyboard.Listener(
            on_press=self.on_buttonbox_press,
-           on_release=self.on_buttonbox_release)
+           on_release=self.on_buttonbox_release
+       )
        listener.start()
 
 
@@ -978,6 +981,30 @@ def practice_arrow_keys(display=None):
                         return
                 pygame.time.wait(10)
 
+    def load_button_image(button_key):
+        """Load button image with fallback for different file extensions and hand positions."""
+        import os
+
+        # Try different combinations of hand (RH/LH) and file extension (.jpg/.JPG)
+        base_path = os.path.expanduser("~/cb2/src/cb2game/fmri/button_images")
+        hands = ["RH", "LH"]
+
+        for hand in hands:
+            filename = f"BB-{hand}-{button_key}.jpg"
+            filepath = os.path.join(base_path, filename)
+
+            if os.path.exists(filepath):
+                try:
+                    image = pygame.image.load(filepath)
+                    logger.info(f"Loaded button image: {filename}")
+                    return image
+                except pygame.error as e:
+                    logger.warning(f"Failed to load {filename}: {e}")
+                    continue
+
+        logger.warning(f"No button image found for key {button_key}")
+        return None
+
     # Show intro
     display.show()
     show_instruction("BUTTONBOX PRACTICE - Press any button to start", wait_for_key=True)
@@ -993,6 +1020,8 @@ def practice_arrow_keys(display=None):
         while not button_completed:
             # Show prompt with progress and button info
             display.clear()
+            display.screen.fill(pygame.Color("white")) # white background for instructions
+            pygame.display.flip()
 
             # Progress
             progress = f"Test {i + 1} of {len(controls)}"
@@ -1002,28 +1031,34 @@ def practice_arrow_keys(display=None):
             # Main instruction
             instruction = f"Press the {control['name']} button"
             instruction_surface = display.font.render(instruction, True, pygame.Color("black"))
-            display.screen.blit(instruction_surface, (display.W // 2 - instruction_surface.get_width() // 2, display.H // 2 - 50))
+            display.screen.blit(instruction_surface,
+                                (display.W // 2 - instruction_surface.get_width() // 2, display.H // 2 - 250))
 
-            # Button key info
-            key_info = f"(Buttonbox key: {control['key']})"
-            key_surface = pygame.font.Font(pygame.font.get_default_font(), 30).render(key_info, True, pygame.Color("gray"))
-            display.screen.blit(key_surface, (display.W // 2 - key_surface.get_width() // 2, display.H // 2 + 20))
+            # Load and display button image
+            button_image = load_button_image(control['key'])
+            if button_image:
+                # Scale image to a reasonable size (max 200px on either dimension while maintaining aspect ratio)
+                original_size = button_image.get_size()
+                max_size = 600
 
-            # TODO: Take button pictures at CNI and input their paths here
-            """
-            try:
-                button_image = pygame.image.load(f"button_images/{control['name'].lower()}_button.png")
-                button_image = pygame.transform.scale(button_image, (150, 150))
-                image_rect = (display.W // 2 - 75, display.H // 2 + 80)
-                display.screen.blit(button_image, image_rect)
-            except pygame.error:
-                # Placeholder if image not found
-            """
-            placeholder = f"[{control['name']} BUTTON IMAGE]"
-            placeholder_surface = pygame.font.Font(pygame.font.get_default_font(), 40).render(placeholder, True,
-                                                                                              pygame.Color("orange"))
-            display.screen.blit(placeholder_surface,
-                                (display.W // 2 - placeholder_surface.get_width() // 2, display.H // 2 + 100))
+                if original_size[0] > original_size[1]:  # Wider than tall
+                    new_width = min(max_size, original_size[0])
+                    new_height = int(original_size[1] * (new_width / original_size[0]))
+                else:  # Taller than wide or square
+                    new_height = min(max_size, original_size[1])
+                    new_width = int(original_size[0] * (new_height / original_size[1]))
+
+                scaled_image = pygame.transform.scale(button_image, (new_width, new_height))
+                image_rect = (display.W // 2 - new_width // 2, display.H // 2 - 50)
+                display.screen.blit(scaled_image, image_rect)
+            else:
+                # Fallback placeholder if image not found
+                placeholder = f"[{control['name']} BUTTON IMAGE]"
+                placeholder_surface = pygame.font.Font(pygame.font.get_default_font(), 40).render(placeholder, True,
+                                                                                                  pygame.Color(
+                                                                                                      "orange"))
+                display.screen.blit(placeholder_surface,
+                                    (display.W // 2 - placeholder_surface.get_width() // 2, display.H // 2 + 100))
 
             pygame.display.flip()
 
@@ -1043,13 +1078,12 @@ def practice_arrow_keys(display=None):
                             logger.info(f"Correct {control['name']} button pressed")
 
                             show_instruction(f"{control['name']} works!", "green")
-                            pygame.time.wait(1000)
+                            pygame.time.wait(3000)
                             break
                         else:
                             # Wrong button - show error and continue waiting
-                            logger.info(f"Wrong button pressed for {control['name']}: {event.key} ({key_name})")
-                            show_instruction(f"Wrong button! Press {control['key']} for {control['name']}", "red")
-                            pygame.time.wait(1500)
+                            show_instruction(f"Wrong button!", "red")
+                            pygame.time.wait(1000)
                             waiting_for_correct = False  # Exit inner loop to redraw prompt
                             break
                     elif event.type == pygame.QUIT:
@@ -1059,7 +1093,7 @@ def practice_arrow_keys(display=None):
                     pygame.time.wait(10)
 
     # Show completion
-    show_instruction("PRACTICE COMPLETE! All buttons work", "green", wait_for_key=True)
+    show_instruction("Button practice complete!", "green", wait_for_key=True)
     logger.info("Buttonbox practice completed successfully - all buttons tested")
 
     return True
@@ -1164,7 +1198,7 @@ def run_palindrome_behavioral(
            host=host,
            lobby=lobby,
            static_instructions=False,
-           deadline=time.time() + 60  # 60 seconds per scenario in a block
+           deadline=time.time() + 200  # 60 seconds per scenario in a block
        )
 
        trial_end_time = time.time()
