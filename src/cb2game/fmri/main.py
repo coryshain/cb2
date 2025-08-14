@@ -94,18 +94,6 @@ def validate_scenario_files(materials_dir, run_set, conditions):
 
 
 class Trial:
-   BUTTONBOX_MAP = {
-       '1': 's',  # R thumb
-       '2': keyboard.Key.up,  # R index
-       '3': keyboard.Key.down,  # R middle
-       '7': keyboard.Key.right,  # L index
-       '8': keyboard.Key.left,  # L middle
-
-       # Spacebar mapping for selection
-       ' ': 's',
-   }
-
-
    def __init__(
            self,
            scenario_path,
@@ -129,7 +117,6 @@ class Trial:
            scenario_file=self.scenario_path,
            subject_kwargs=self.subject_kwargs
        )
-
 
        self.over = False
        self.success = False
@@ -184,30 +171,6 @@ class Trial:
 
 
        return scenario_data
-
-
-   def on_buttonbox_press(self, key):
-       try:
-           char = key.char
-           if char in Trial.BUTTONBOX_MAP:
-               print(char, 'down')
-               KEYBOARD.press(Trial.BUTTONBOX_MAP[char])
-
-
-       except AttributeError:
-           if key == keyboard.Key.space:
-               KEYBOARD.press('s')  # selection for special keys
-
-
-   def on_buttonbox_release(self, key):
-       try:
-           char = key.char
-           if char in Trial.BUTTONBOX_MAP:
-               print(char, 'up')
-               KEYBOARD.release(Trial.BUTTONBOX_MAP[char])
-       except AttributeError:
-           if key == keyboard.Key.space:
-               KEYBOARD.release('s')
 
 
    def run(
@@ -273,22 +236,91 @@ class Trial:
        game.step(Action.LoadScenario(scenario_data_json))
        logger.info(f"Loaded...")
 
-
-       listener = keyboard.Listener(
-           on_press=self.on_buttonbox_press,
-           on_release=self.on_buttonbox_release
-       )
-       listener.start()
-
+       # The following JavaScript injection maps the BUTTONBOX keys to movement before they reach Unity
+       # Change the numberical mappings below to remap the buttonboxes
+       browser_key_mapping = """
+            const keyMapping = {
+                '1': 'KeyS',      // Right thumb -> S (select)
+                '2': 'ArrowUp',   // Right index -> Up
+                '3': 'ArrowDown', // Right middle -> Down  
+                '7': 'ArrowRight',// Left index -> Right
+                '8': 'ArrowLeft'  // Left middle -> Left
+            };
+            
+            function createKeyEvent(type, keyCode, key) {
+                return new KeyboardEvent(type, {
+                    key: key,
+                    code: keyCode,
+                    keyCode: keyCode === 'KeyS' ? 83 : (
+                        keyCode === 'ArrowUp' ? 38 :
+                        keyCode === 'ArrowDown' ? 40 :
+                        keyCode === 'ArrowRight' ? 39 :
+                        keyCode === 'ArrowLeft' ? 37 : 0
+                    ),
+                    which: keyCode === 'KeyS' ? 83 : (
+                        keyCode === 'ArrowUp' ? 38 :
+                        keyCode === 'ArrowDown' ? 40 :
+                        keyCode === 'ArrowRight' ? 39 :
+                        keyCode === 'ArrowLeft' ? 37 : 0
+                    ),
+                    bubbles: true,
+                    cancelable: true
+                });
+            }
+            
+            // Intercept and convert numerical keys to arrow keys
+            document.addEventListener('keydown', function(event) {
+                if (keyMapping[event.key]) {
+                    // Prevent the original numerical key from reaching Unity
+                    event.preventDefault();
+                    event.stopPropagation();
+                    
+                    // Create and dispatch the mapped key event
+                    const mappedKey = keyMapping[event.key];
+                    const newEvent = createKeyEvent('keydown', mappedKey, 
+                        mappedKey.startsWith('Arrow') ? mappedKey : 's');
+                    
+                    // Target the Unity canvas specifically
+                    const unityCanvas = document.querySelector('canvas');
+                    if (unityCanvas) {
+                        unityCanvas.dispatchEvent(newEvent);
+                    } else {
+                        document.dispatchEvent(newEvent);
+                    }
+                    
+                    console.log(`Mapped ${event.key} to ${mappedKey}`);
+                    return false;
+                }
+            }, true); // Use capture phase
+            
+            document.addEventListener('keyup', function(event) {
+                if (keyMapping[event.key]) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    
+                    const mappedKey = keyMapping[event.key];
+                    const newEvent = createKeyEvent('keyup', mappedKey,
+                        mappedKey.startsWith('Arrow') ? mappedKey : 's');
+                    
+                    const unityCanvas = document.querySelector('canvas');
+                    if (unityCanvas) {
+                        unityCanvas.dispatchEvent(newEvent);
+                    } else {
+                        document.dispatchEvent(newEvent);
+                    }
+                    
+                    return false;
+                }
+            }, true);
+            """
+       browser.execute_script(browser_key_mapping)
+       logger.info("Injected key mapping script into browser")
 
        time.sleep(max(0., 3 - (time.time() - t0)))
 
-
        self.display.hide()
 
-
        self.start_time = time.time()
-
 
        while not self.over:
            game_state = game.step(Action.NoopAction())
@@ -304,7 +336,7 @@ class Trial:
 
            n_cards = len(cards)
            if n_cards < n_cards_prev:
-               t = time.time
+               t = time.time()
                self.target_found_times.append(t)
                self.targets_found += 1
                n_cards_prev = n_cards
@@ -326,8 +358,6 @@ class Trial:
        self.duration = time.time() - self.start_time
        game.instructions = []
        game.queued_messages = []
-       listener.stop()
-
 
        return game_state
 
