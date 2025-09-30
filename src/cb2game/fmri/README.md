@@ -40,13 +40,6 @@ python -m cb2game.fmri.main <ARGS>
 
 `<ARGS>` should contain parameters for subject_id, run_number, run_set, task_difficulty, and linguistic_complexity.
 
-You can also run the behavioral version of the experiment from this branch, using any materials directory on your machine. For example:
-
-```bash
-python -m cb2game.fmri.main 1 1 A 3 1 --behavioral --materials-dir ~/cb2main-old/materials
-# this example uses main-old's materials sample
-```
-
 The FMRI experiment uses buttonboxes to move the player, which map to numerical inputs. Use the following flag to toggle off the buttonbox testing intro that precedes the experiment.
 
 ```
@@ -56,4 +49,15 @@ The FMRI experiment uses buttonboxes to move the player, which map to numerical 
 The experiment driver uses pygame 2.1.2, which can cause problems on ARM Macs. The game will still run properly with pygame 2.1.3. If running the experiment causes an error, try installing the pynput package independently with the following command:
 ```bash
 pip install pynput
+```
+
+On the CLiMB Lab machine where cb2 is already installed, run the following commands in order to start the experiment with the buttonbox test:
+```bash
+conda activate cb2
+python -m cb2game.server.main --config_filepath=cb2fmri.yaml
+
+# in a separate terminal window
+conda activate cb2
+python -m cb2game.fmri.main 1 1 A 3 1 --behavioral --materials-dir ~/cb2main-old/materials
+# before resampling, we are testing using the old repo's materials sample
 ```
