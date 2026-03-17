@@ -53,6 +53,8 @@ Use `--behavioral` to run the fixed-timing palindrome FMRI protocol.
   - If omitted, the lowest shared `scenario_id` is used.
 - `--no-ratings`: disable post-condition rating prompts.
 - `--no-test-button-box`: skip the buttonbox practice intro.
+  - If using the buttonbox test on a laptop, the key mappings are as follows:
+  - Up: 2 | Down: 3 | Right: 7 | Left: 8 | Select: 1
 
 Condition template mapping (`--condition-template`):
 
