@@ -38,12 +38,44 @@ The experiment driver program is run as a module from the parent directory. Open
 python -m cb2game.fmri.main <ARGS>
 ```
 
-`<ARGS>` should contain parameters for subject_id, run_number, run_set, task_difficulty, and linguistic_complexity.
+`<ARGS>` should contain parameters for `subject_id`, `run_number`, `run_set`, `task_difficulty`, and `linguistic_complexity`.
 
-The FMRI experiment uses buttonboxes to move the player, which map to numerical inputs. Use the following flag to toggle off the buttonbox testing intro that precedes the experiment.
+### Behavioral mode (palindrome protocol)
 
-```
---no-test-buttonbox
+Use `--behavioral` to run the fixed-timing palindrome FMRI protocol.
+
+- `run_set`: pass `A` (auto-converted to `runset_A`) or pass `runset_A` directly.
+- `task_difficulty`: use `3` for hard fog (H setting), `0` for easy fog (E setting).
+- `linguistic_complexity`: binarized (`0` = easy language, any nonzero = hard language).
+- `--condition-template N`: choose predefined forward condition order (`N` in `1-4`).
+  - If omitted, template is selected by `run_number`.
+- `--scenario-id ID`: pin to a specific shared `scenario_id` across HH/EH/HE/EE.
+  - If omitted, the lowest shared `scenario_id` is used.
+- `--no-ratings`: disable post-condition rating prompts.
+- `--no-test-button-box`: skip the buttonbox practice intro.
+
+Condition template mapping (`--condition-template`):
+
+| Template | Forward order | One palindrome (`forward + reverse`) |
+|---|---|---|
+| 1 | `HH, EH, HE, EE` | `HH, EH, HE, EE, EE, HE, EH, HH` |
+| 2 | `EH, HE, EE, HH` | `EH, HE, EE, HH, HH, EE, HE, EH` |
+| 3 | `HE, EE, HH, EH` | `HE, EE, HH, EH, EH, HH, EE, HE` |
+| 4 | `EE, HH, EH, HE` | `EE, HH, EH, HE, HE, EH, HH, EE` |
+
+Legend: `H` setting = `task_difficulty > 0`; `E` setting = `task_difficulty = 0`. `H` language = `linguistic_complexity > 0`; `E` language = `linguistic_complexity = 0`.
+
+Examples:
+
+```bash
+# Default behavioral run (template from run_number, lowest shared scenario_id)
+python -m cb2game.fmri.main 1 1 A 3 1 --behavioral
+
+# Explicit template and scenario selection
+python -m cb2game.fmri.main 1 1 A 3 1 --behavioral --condition-template 2 --scenario-id 1
+
+# Skip both ratings and buttonbox test
+python -m cb2game.fmri.main 1 1 A 3 1 --behavioral --no-ratings --no-test-button-box
 ```
 
 The experiment driver uses pygame 2.1.2, which can cause problems on ARM Macs. The game will still run properly with pygame 2.1.3. If running the experiment causes an error, try installing the pynput package independently with the following command:

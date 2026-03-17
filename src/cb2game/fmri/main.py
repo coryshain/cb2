@@ -2,7 +2,6 @@ import logging
 import json
 import os
 import argparse
-import random
 import pygame
 import time
 import csv
@@ -52,6 +51,22 @@ CSV_HEADERS = [
     'difficulty_rating',
     'trial_duration_seconds',
     'trial_completed_utc'
+]
+
+# Behavioral timing configuration (seconds)
+INITIAL_FIXATION_S = 5
+CONDITION_BLOCK_DURATION_S = 30
+SWITCH_FIXATION_S = 4
+MID_RUN_FIXATION_S = 10
+END_FIXATION_S = 10
+
+# Predefined forward condition templates for one palindrome (counterbalanced, deterministic).
+# These templates are expanded into concrete tuples using HH/EH/HE/EE labels.
+PREDEFINED_FORWARD_CONDITION_LABELS = [
+    ['HH', 'EH', 'HE', 'EE'],
+    ['EH', 'HE', 'EE', 'HH'],
+    ['HE', 'EE', 'HH', 'EH'],
+    ['EE', 'HH', 'EH', 'HE'],
 ]
 
 
@@ -378,10 +393,14 @@ class Trial:
             host=HOST,
             lobby=LOBBY,
             static_instructions=False,
-            deadline=None
+            deadline=None,
+            pre_trial_fixation_s=3,
     ):
         browser.refresh()
-        self.display.show_cross()
+        if pre_trial_fixation_s and pre_trial_fixation_s > 0:
+            self.display.show_cross()
+        else:
+            self.display.hide()
         t0 = time.time()
 
         logger.info(f"Trying to connect to {host} and lobby {lobby}")
@@ -532,9 +551,9 @@ class Trial:
         browser.execute_script(browser_key_mapping)
         logger.info("Injected key mapping script into browser")
 
-        time.sleep(max(0., 3 - (time.time() - t0)))
-
-        self.display.hide()
+        if pre_trial_fixation_s and pre_trial_fixation_s > 0:
+            time.sleep(max(0., pre_trial_fixation_s - (time.time() - t0)))
+            self.display.hide()
 
         self.start_time = time.time()
 
@@ -1392,21 +1411,31 @@ def run_palindrome_behavioral(
         host=HOST,
         lobby=LOBBY,
         no_test_button_box=False,
+        no_ratings=False,
+        condition_template=None,
+        scenario_id=None,
 ):
     if display is None:
         display = Display()
 
+    def show_fixation(duration_s):
+        if duration_s <= 0:
+            return
+        logger.info("Showing fixation for %ss", duration_s)
+        display.show_cross()
+        time.sleep(duration_s)
+        display.hide()
+
     subject_kwargs = {"subject_id": subject_id, "run": run_number}
 
-    # Define the 4 scenario condition tuples for the palindrome pattern.
-    # Order is fixed/deterministic: the input condition first, then its two single-easy
-    # variants, then the all-easy baseline.
-    conditions = [
-        (task_difficulty, linguistic_complexity),
-        (0, linguistic_complexity),
-        (task_difficulty, 0),
-        (0, 0)
-    ]
+    # Define the 4 condition tuples for this run.
+    condition_lookup = {
+        'HH': (task_difficulty, linguistic_complexity),
+        'EH': (0, linguistic_complexity),
+        'HE': (task_difficulty, 0),
+        'EE': (0, 0),
+    }
+    conditions = list(condition_lookup.values())
 
     # Scan the runset directory for available scenario files.
     logger.info(f"Scanning scenario files for {run_set}...")
@@ -1436,12 +1465,25 @@ def run_palindrome_behavioral(
         if not practice_success:
             logger.warning("Buttonbox practice was not fully successful, but continuing with experiment")
 
-    # Randomize the order of the 4 conditions for the forward half of the palindrome.
-    # The reverse half is always the mirror of the forward half, preserving palindrome symmetry.
-    # The shared scenario_id (and therefore the map) remains fixed regardless of order.
-    ordered_conditions = conditions.copy()
-    random.shuffle(ordered_conditions)
-    logger.info("Randomized condition order for palindrome forward half: %s", ordered_conditions)
+    # Pick a predefined forward condition list.
+    # Default: cycle templates by run number. Override with --condition-template.
+    if condition_template is None:
+        order_ix = (int(run_number) - 1) % len(PREDEFINED_FORWARD_CONDITION_LABELS)
+    else:
+        order_ix = int(condition_template) - 1
+        if order_ix < 0 or order_ix >= len(PREDEFINED_FORWARD_CONDITION_LABELS):
+            raise ValueError(
+                f"Invalid condition template index: {condition_template}. "
+                f"Valid range is 1-{len(PREDEFINED_FORWARD_CONDITION_LABELS)}."
+            )
+    selected_labels = PREDEFINED_FORWARD_CONDITION_LABELS[order_ix]
+    ordered_conditions = [condition_lookup[label] for label in selected_labels]
+    logger.info(
+        "Using predefined condition order index=%s labels=%s resolved=%s",
+        order_ix,
+        selected_labels,
+        ordered_conditions,
+    )
 
     # Choose the lowest scenario_id that exists in all four condition buckets so map/assets stay fixed.
     scenario_ids_by_condition = {
@@ -1456,17 +1498,27 @@ def run_palindrome_behavioral(
             f"Available IDs by condition: {details}"
         )
 
-    selected_shared_id = sorted(shared_ids)[0]
-    logger.info(
-        "Selected shared scenario_id=%s (lowest available) for all condition variants to keep map constant.",
-        selected_shared_id,
-    )
+    if scenario_id is None:
+        selected_shared_id = sorted(shared_ids)[0]
+        logger.info(
+            "Selected shared scenario_id=%s (lowest available) for all condition variants to keep map constant.",
+            selected_shared_id,
+        )
+    else:
+        selected_shared_id = int(scenario_id)
+        if selected_shared_id not in shared_ids:
+            raise FileNotFoundError(
+                f"Requested scenario_id {selected_shared_id} is not shared across all required conditions "
+                f"in {run_set}. Shared IDs are: {sorted(shared_ids)}"
+            )
+        logger.info(
+            "Selected requested shared scenario_id=%s for all condition variants.",
+            selected_shared_id,
+        )
 
-    # Load scenario paths for each condition in fixed order, pinned to the same scenario_id.
-    scenario_paths = []
-    condition_sequence = []  # Track the condition sequence for logging
-
-    for (env, ling) in ordered_conditions:
+    # Pin each condition to the shared scenario_id so underlying map/assets stay fixed.
+    scenario_path_by_condition = {}
+    for (env, ling) in conditions:
         condition = (env, ling)
         matching = [s for s in available_files[condition] if s['scenario_id'] == selected_shared_id]
         if not matching:
@@ -1474,8 +1526,7 @@ def run_palindrome_behavioral(
                 f"Missing scenario_id {selected_shared_id} for condition t{env}_l{ling} in {run_set}."
             )
         selected_scenario = matching[0]
-        scenario_paths.append(selected_scenario['full_path'])
-        condition_sequence.append(condition)
+        scenario_path_by_condition[condition] = selected_scenario['full_path']
         logger.info(
             "Selected scenario for condition t%s_l%s (shared_id=%s): %s",
             env,
@@ -1484,24 +1535,39 @@ def run_palindrome_behavioral(
             selected_scenario['filename'],
         )
 
-    # Create full palindrome: forward + reverse
-    palindrome_paths = scenario_paths + list(reversed(scenario_paths))
-    palindrome_conditions = condition_sequence + list(reversed(condition_sequence))
+    # Build run-level schedule: palindrome up/back twice.
+    palindrome_conditions = ordered_conditions + list(reversed(ordered_conditions))
+    full_condition_sequence = palindrome_conditions + palindrome_conditions
 
-    logger.info(f"Running palindrome behavioral with {len(palindrome_paths)} scenarios")
-    logger.info(f"Condition order: {ordered_conditions} forward + reversed")
+    logger.info("Running behavioral schedule with %s condition blocks", len(full_condition_sequence))
+    logger.info("Single-palindrome condition order: %s forward + reversed", ordered_conditions)
 
     # Record experiment start time
     experiment_start_utc = datetime.utcnow().isoformat() + "Z"
 
-    # Run each scenario
+    # Initial fixation before condition blocks.
+    show_fixation(INITIAL_FIXATION_S)
+
+    # Run each condition block according to schedule.
     prev_game_state = None
     prev_condition = None
-    for i, (scenario_path, condition) in enumerate(zip(palindrome_paths, palindrome_conditions)):
-        logger.info(f"Running scenario {i + 1}/{len(palindrome_paths)}: {os.path.basename(scenario_path)}")
+    n_per_palindrome = len(palindrome_conditions)
+    n_forward = len(ordered_conditions)
+    for i, condition in enumerate(full_condition_sequence):
+        # At each condition switch, insert fixation to separate hemodynamics.
+        if prev_condition is not None and condition != prev_condition:
+            show_fixation(SWITCH_FIXATION_S)
 
-        # Determine palindrome half
-        palindrome_half = "forward" if i < 4 else "reverse"
+        # Between the two palindromes, insert a longer fixation.
+        if i == n_per_palindrome:
+            show_fixation(MID_RUN_FIXATION_S)
+
+        scenario_path = scenario_path_by_condition[condition]
+        logger.info(f"Running scenario {i + 1}/{len(full_condition_sequence)}: {os.path.basename(scenario_path)}")
+
+        # Determine palindrome half for logging within each palindrome.
+        within_palindrome_ix = i % n_per_palindrome
+        palindrome_half = "forward" if within_palindrome_ix < n_forward else "reverse"
 
         # Ensure Unity has focus before starting the trial
         restore_unity_focus_after_rating(browser)
@@ -1523,14 +1589,14 @@ def run_palindrome_behavioral(
             display=display
         )
 
-        # Run trial with time limit
-        start_trial_time = time.time()
+        # Run each condition block for a fixed duration.
         game_state = trial.run(
             browser,
             host=host,
             lobby=lobby,
             static_instructions=False,
-            deadline=time.time() + 60  # 60 seconds per scenario
+            deadline=time.time() + CONDITION_BLOCK_DURATION_S,
+            pre_trial_fixation_s=0,
         )
         prev_game_state = game_state
         prev_condition = condition
@@ -1539,10 +1605,13 @@ def run_palindrome_behavioral(
         pygame.event.clear()
         time.sleep(0.5)
 
-        # Get difficulty rating
-        logger.info(f"Showing rating prompt for trial {i + 1}")
-        rating = prompt_for_rating(display, browser)
-        logger.info(f"Rating received for trial {i + 1}: {rating}")
+        # Get optional difficulty rating.
+        if no_ratings:
+            rating = ""
+        else:
+            logger.info(f"Showing rating prompt for trial {i + 1}")
+            rating = prompt_for_rating(display, browser)
+            logger.info(f"Rating received for trial {i + 1}: {rating}")
 
         # Extract performance data
         performance_data = extract_game_performance(game_state, trial)
@@ -1572,6 +1641,9 @@ def run_palindrome_behavioral(
 
         logger.info(f"Trial {i + 1} data logged. Pausing before next trial...")
         time.sleep(1)  # Pause between trials
+
+    # End-of-run fixation.
+    show_fixation(END_FIXATION_S)
 
     logger.info(f"Behavioral run complete. Data logged to {CSV_FILE_PATH}")
 
@@ -1676,11 +1748,35 @@ if __name__ == "__main__":
     parser.add_argument("--host", type=str, default=HOST)
     parser.add_argument("--lobby", type=str, default=LOBBY)
 
-    # Behavioral experiment flag for randomized palindrome selection and user feedback
+    # Behavioral FMRI protocol flags.
     parser.add_argument(
         "--behavioral",
         action="store_true",
-        help="Run palindrome behavioral protocol with difficulty ratings after each scenario"
+        help="Run the palindrome FMRI protocol with fixed timing and predefined condition templates"
+    )
+    parser.add_argument(
+        "--no-ratings",
+        action="store_true",
+        help="Disable post-condition difficulty rating prompts in behavioral mode"
+    )
+    parser.add_argument(
+        "--condition-template",
+        type=int,
+        default=None,
+        help=(
+            "1-based index for predefined forward condition template in behavioral mode "
+            f"(1-{len(PREDEFINED_FORWARD_CONDITION_LABELS)}). "
+            "Default cycles by run_number."
+        )
+    )
+    parser.add_argument(
+        "--scenario-id",
+        type=int,
+        default=None,
+        help=(
+            "Pin behavioral mode to a specific shared scenario_id across all conditions. "
+            "Default uses the lowest shared scenario_id."
+        )
     )
 
     args = parser.parse_args()
@@ -1698,6 +1794,9 @@ if __name__ == "__main__":
         n_trials = int(n_trials)
     static_instructions = args.static_instructions
     no_test_button_box = args.no_test_button_box
+    no_ratings = args.no_ratings
+    condition_template = args.condition_template
+    scenario_id = args.scenario_id
     not_in_scanner = args.not_in_scanner
     host = args.host
     lobby = args.lobby
@@ -1724,6 +1823,9 @@ if __name__ == "__main__":
                 host=host,
                 lobby=lobby,
                 no_test_button_box=no_test_button_box,
+                no_ratings=no_ratings,
+                condition_template=condition_template,
+                scenario_id=scenario_id,
             )
         else:
             client = normal_main(
