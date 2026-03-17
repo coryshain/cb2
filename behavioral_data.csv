@@ -1,0 +1,11 @@
+subject_id,run_number,experiment_start_utc,scenario_position,condition_code,condition_detail,palindrome_half,scenario_filename,instructions_text,cards_correct,cards_incorrect,incorrect_card_ids,difficulty_rating,trial_duration_seconds,trial_completed_utc
+1,1,2026-03-17T07:04:16.877646Z,1,HE,Hard_Setting_Easy_Language,forward,scenario_0003_t3_l0.json,No instruction available,1,0,[],1,0.004462480545043945,2026-03-17T07:04:29.065980Z
+1,1,2026-03-17T07:04:16.877646Z,2,EH,Easy_Setting_Hard_Language,forward,scenario_0001_t0_l1.json,No instruction available,0,0,[],2,0.0003001689910888672,2026-03-17T07:04:37.898135Z
+1,1,2026-03-17T07:04:16.877646Z,3,HH,Hard_Setting_Hard_Language,forward,scenario_0003_t3_l1.json,No instruction available,0,0,[],3,0.00030422210693359375,2026-03-17T07:04:47.534175Z
+1,1,2026-03-17T07:04:16.877646Z,4,EE,Easy_Setting_Easy_Language,forward,scenario_0002_t0_l0.json,No instruction available,0,0,[],4,0.0003533363342285156,2026-03-17T07:04:58.314094Z
+1,1,2026-03-17T07:20:30.746089Z,1,EH,Easy_Setting_Hard_Language,forward,scenario_0003_t0_l1.json,No instruction available,1,0,[],1,0.003892183303833008,2026-03-17T07:20:43.734251Z
+1,1,2026-03-17T07:20:30.746089Z,2,EE,Easy_Setting_Easy_Language,forward,scenario_0002_t0_l0.json,No instruction available,1,0,[],3,0.0018086433410644531,2026-03-17T07:20:56.164655Z
+1,1,2026-03-17T07:21:55.057145Z,1,HH,Hard_Setting_Hard_Language,forward,scenario_0002_t3_l1.json,Find the card with two red stars that a short red house that is 2 tiles from a short yellow house is beside.,1,0,[],5,29.67599320411682,2026-03-17T07:22:33.797220Z
+1,1,2026-03-17T07:21:55.057145Z,2,EE,Easy_Setting_Easy_Language,forward,scenario_0001_t0_l0.json,Find the card with one blue heart that is 2 tiles from a rock that is 3 tiles from a tree.,0,0,[],4,29.851258754730225,2026-03-17T07:23:12.597086Z
+1,1,2026-03-17T07:21:55.057145Z,3,EH,Easy_Setting_Hard_Language,forward,scenario_0003_t0_l1.json,Find the card with two green diamonds that a short grey house that is 3 tiles from a short red house is 2 tiles from.,0,0,[],6,29.83028292655945,2026-03-17T07:23:50.680003Z
+1,1,2026-03-17T08:20:30.656479Z,1,HE,Hard_Setting_Easy_Language,forward,scenario_0001_t3_l0.json,Find the card with one blue heart that is 2 tiles from a rock that is 3 tiles from a tree.,0,0,[],6,29.67928194999695,2026-03-17T08:21:09.531565Z

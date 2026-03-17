@@ -2,6 +2,7 @@ import logging
 import json
 import os
 import argparse
+import random
 import pygame
 import time
 import csv
@@ -147,17 +148,19 @@ def get_condition_from_scenario_path(scenario_path):
 
 def validate_scenario_files(materials_dir, run_set, conditions):
     """
-    Validate that all required scenario files exist for the given conditions.
-    The validation is slight overkill, but the function also creates
-    the list of relevant scenario jsons for palindrome construction.
+    Scan the runset directory and build a dict of available scenario files.
+    Assumes the runset follows the expected naming convention
+    (scenario_<id>_t<difficulty>_l<complexity>.json). Returns an error only
+    if the directory itself cannot be found or read; missing individual
+    conditions are left for the caller to detect and report.
 
     Args:
         materials_dir: Base materials directory path
         run_set: runset directory name, like 'runset_A'
-        conditions: List of (task_difficulty, linguistic_complexity) tuples passed in fmri args
+        conditions: unused – kept for interface compatibility
 
     Returns:
-        tuple: (all_files_exist: bool, missing_files: list, available_files: dict)
+        tuple: (directory_ok: bool, errors: list, available_files: dict)
     """
     runset_path = os.path.join(materials_dir, run_set)
 
@@ -165,23 +168,19 @@ def validate_scenario_files(materials_dir, run_set, conditions):
         logger.error(f"Runset directory does not exist: {runset_path}")
         return False, [runset_path], {}
 
-    # Get all available scenario files
     available_files = {}
-    missing_files = []
 
     try:
-        all_files = os.listdir(runset_path)
-        scenario_files = [f for f in all_files if f.startswith('scenario_') and f.endswith('.json')]
+        scenario_files = [f for f in os.listdir(runset_path)
+                          if f.startswith('scenario_') and f.endswith('.json')]
 
-        # Parse available materials files for scenarios in runset
         for filename in scenario_files:
-            try:
-                parts = filename.split('_')
-                if len(parts) >= 4:
+            parts = filename.split('_')
+            if len(parts) >= 4:
+                try:
                     scenario_id = int(parts[1])
-                    task_difficulty = int(parts[2][1])  # Extract number from 't0', 't1', etc.
-                    linguistic_complexity = int(parts[3][1])  # Extract number from 'l0', 'l1', etc.
-
+                    task_difficulty = int(parts[2][1])  # e.g. 't1' -> 1
+                    linguistic_complexity = int(parts[3][1])  # e.g. 'l0' -> 0
                     condition = (task_difficulty, linguistic_complexity)
                     if condition not in available_files:
                         available_files[condition] = []
@@ -190,23 +189,14 @@ def validate_scenario_files(materials_dir, run_set, conditions):
                         'scenario_id': scenario_id,
                         'full_path': os.path.join(runset_path, filename)
                     })
-            except (ValueError, IndexError) as e:
-                logger.warning(f"Could not parse scenario filename: {filename} - {e}")
+                except (ValueError, IndexError) as e:
+                    logger.warning(f"Could not parse scenario filename: {filename} - {e}")
 
-        # Check if all required conditions have files
-        all_files_exist = True
-        for condition in conditions:
-            if condition not in available_files or len(available_files[condition]) == 0:
-                missing_files.append(
-                    f"No scenarios found for condition t{condition[0]}_l{condition[1]} in {runset_path}")
-                all_files_exist = False
-            else:
-                # Sort scenarios by ID for consistent ordering
-                available_files[condition].sort(key=lambda x: x['scenario_id'])
-                logger.info(
-                    f"Found {len(available_files[condition])} scenarios for condition t{condition[0]}_l{condition[1]}")
+        # Sort each condition's list by scenario_id for deterministic ordering
+        for condition in available_files:
+            available_files[condition].sort(key=lambda x: x['scenario_id'])
 
-        return all_files_exist, missing_files, available_files
+        return True, [], available_files
 
     except OSError as e:
         logger.error(f"Error accessing directory {runset_path}: {e}")
@@ -252,6 +242,13 @@ class Trial:
         self.incorrect_selections = []  # Track incorrect card IDs
         self.current_instruction = None  # Track current instruction text
         self.all_instructions = []  # Track all instructions seen
+        self.carryover_info = {
+            'status': 'not_requested',
+            'reason': 'no_previous_state',
+            'location': None,
+            'rotation_degrees': None,
+            'target_role': None,
+        }
 
     def load_scenario_data(
             self,
@@ -276,22 +273,103 @@ class Trial:
 
         return scenario_data
 
+    def _valid_hex_location_for_map(self, location, scenario_data):
+        """Return True if location looks valid for the scenario map bounds."""
+        if not isinstance(location, dict):
+            return False
+        if 'r' not in location or 'c' not in location:
+            return False
+
+        map_data = scenario_data.get('map', {})
+        rows = map_data.get('rows')
+        cols = map_data.get('cols')
+        if rows is None or cols is None:
+            return True  # If map metadata is missing, do not block carryover.
+
+        try:
+            r = int(location['r'])
+            c = int(location['c'])
+        except (TypeError, ValueError):
+            return False
+        return 0 <= r < int(rows) and 0 <= c < int(cols)
+
+    def _select_actor_for_carryover(self, state, scenario_data):
+        """Pick a source actor from previous state and the matching target role in scenario."""
+        actors = state.get('actors', [])
+        if not actors:
+            return None, None
+
+        # Prefer follower role, which is the controllable avatar in these scenarios.
+        source_actor = next((a for a in actors if a.get('actor_role') == 1), None)
+        if source_actor is None and len(actors) == 1:
+            source_actor = actors[0]
+        if source_actor is None:
+            source_actor = actors[0]
+
+        location = source_actor.get('location')
+        if not self._valid_hex_location_for_map(location, scenario_data):
+            logger.warning(
+                "Skipping pose carryover: source location %s is invalid for map bounds.",
+                location,
+            )
+            return None, None
+
+        target_role = source_actor.get('actor_role', 1)
+        return source_actor, target_role
+
     def update_from_state(
             self,
             scenario_data
     ):
         state = self.state.to_dict()
-        scenario_data['prop_update']['props'] = state['props']
-        scenario_data['turn_state']['score'] = state['turn_state']['score']
-        scenario_data['target_card_ids'] = scenario_data['target_card_ids'][state['turn_state']['score']:]
-        scenario_data['objectives'] = scenario_data['objectives'][state['turn_state']['score']:]
-        location = state['actors'][0]['location']
-        rotation_degrees = state['actors'][0]['rotation_degrees']
-        for actor in scenario_data['actor_state']['actors']:
-            if actor['actor_role'] == 1:
+
+        # Behavioral carryover should preserve pose only.
+        # Do not carry score/cards/objectives across different scenarios.
+        source_actor, target_role = self._select_actor_for_carryover(state, scenario_data)
+        if source_actor is None:
+            self.carryover_info = {
+                'status': 'skipped',
+                'reason': 'no_valid_source_actor_or_pose',
+                'location': None,
+                'rotation_degrees': None,
+                'target_role': None,
+            }
+            logger.info("Pose carryover skipped: %s", self.carryover_info)
+            return scenario_data
+
+        location = source_actor.get('location')
+        rotation_degrees = source_actor.get('rotation_degrees', 0.0)
+
+        carried = False
+        for actor in scenario_data.get('actor_state', {}).get('actors', []):
+            if actor.get('actor_role') == target_role:
                 actor['location'] = location
                 actor['rotation_degrees'] = rotation_degrees
+                carried = True
+                break
 
+        if not carried:
+            self.carryover_info = {
+                'status': 'skipped',
+                'reason': 'target_actor_role_missing_in_scenario',
+                'location': location,
+                'rotation_degrees': rotation_degrees,
+                'target_role': target_role,
+            }
+            logger.warning(
+                "Could not find target actor_role=%s in scenario actor_state; using default spawn.",
+                target_role,
+            )
+        else:
+            self.carryover_info = {
+                'status': 'applied',
+                'reason': 'ok',
+                'location': location,
+                'rotation_degrees': rotation_degrees,
+                'target_role': target_role,
+            }
+
+        logger.info("Pose carryover status: %s", self.carryover_info)
         return scenario_data
 
     def run(
@@ -345,7 +423,24 @@ class Trial:
 
         if self.state is not None:
             scenario_data = self.update_from_state(scenario_data)
+        else:
+            self.carryover_info = {
+                'status': 'not_requested',
+                'reason': 'no_previous_state',
+                'location': None,
+                'rotation_degrees': None,
+                'target_role': None,
+            }
         n_cards_prev = len(scenario_data['prop_update']['props'])
+
+        logger.info(
+            "Trial load summary: objectives=%d, carryover_status=%s, carryover_reason=%s, pose=%s/%s",
+            len(scenario_data.get('objectives', [])),
+            self.carryover_info.get('status'),
+            self.carryover_info.get('reason'),
+            self.carryover_info.get('location'),
+            self.carryover_info.get('rotation_degrees'),
+        )
 
         scenario_data_json = json.dumps(scenario_data)
 
@@ -1298,13 +1393,14 @@ def run_palindrome_behavioral(
         lobby=LOBBY,
         no_test_button_box=False,
 ):
-    import random
     if display is None:
         display = Display()
 
     subject_kwargs = {"subject_id": subject_id, "run": run_number}
 
-    # Define the 4 scenario condition tuples for the palindrome pattern
+    # Define the 4 scenario condition tuples for the palindrome pattern.
+    # Order is fixed/deterministic: the input condition first, then its two single-easy
+    # variants, then the all-easy baseline.
     conditions = [
         (task_difficulty, linguistic_complexity),
         (0, linguistic_complexity),
@@ -1312,17 +1408,26 @@ def run_palindrome_behavioral(
         (0, 0)
     ]
 
-    # Validate required scenario files
-    logger.info(f"Validating scenario files for {run_set}...")
-    files_exist, missing_files, available_files = validate_scenario_files(
+    # Scan the runset directory for available scenario files.
+    logger.info(f"Scanning scenario files for {run_set}...")
+    dir_ok, dir_errors, available_files = validate_scenario_files(
         materials_dir, run_set, conditions
     )
 
-    if not files_exist:
-        logger.error("Missing required scenario files:")
-        for missing in missing_files:
-            logger.error(f"  - {missing}")
-        raise FileNotFoundError(f"Cannot run experiment - missing scenario files: {missing_files}")
+    if not dir_ok:
+        raise FileNotFoundError(
+            f"Cannot run experiment - runset directory not found or unreadable: {dir_errors}"
+        )
+
+    # Verify that each required condition is present; fail clearly if not.
+    runset_path = os.path.join(materials_dir, run_set)
+    for condition in conditions:
+        if condition not in available_files or len(available_files[condition]) == 0:
+            raise FileNotFoundError(
+                f"No scenarios found for condition t{condition[0]}_l{condition[1]} "
+                f"in {runset_path}. Expected files matching: "
+                f"scenario_*_t{condition[0]}_l{condition[1]}.json"
+            )
 
     # Test buttonbox if needed
     if not no_test_button_box:
@@ -1331,33 +1436,67 @@ def run_palindrome_behavioral(
         if not practice_success:
             logger.warning("Buttonbox practice was not fully successful, but continuing with experiment")
 
-    # Randomize the initial 4 scenario orders
-    randomized_conditions = random.sample(conditions, k=4)
+    # Randomize the order of the 4 conditions for the forward half of the palindrome.
+    # The reverse half is always the mirror of the forward half, preserving palindrome symmetry.
+    # The shared scenario_id (and therefore the map) remains fixed regardless of order.
+    ordered_conditions = conditions.copy()
+    random.shuffle(ordered_conditions)
+    logger.info("Randomized condition order for palindrome forward half: %s", ordered_conditions)
 
-    # Load scenario paths for each condition in randomized order
+    # Choose the lowest scenario_id that exists in all four condition buckets so map/assets stay fixed.
+    scenario_ids_by_condition = {
+        condition: {entry['scenario_id'] for entry in available_files[condition]}
+        for condition in conditions
+    }
+    shared_ids = set.intersection(*(scenario_ids_by_condition[c] for c in conditions))
+    if not shared_ids:
+        details = {str(c): sorted(list(ids)) for c, ids in scenario_ids_by_condition.items()}
+        raise FileNotFoundError(
+            f"No shared scenario_id exists across required conditions in {run_set}. "
+            f"Available IDs by condition: {details}"
+        )
+
+    selected_shared_id = sorted(shared_ids)[0]
+    logger.info(
+        "Selected shared scenario_id=%s (lowest available) for all condition variants to keep map constant.",
+        selected_shared_id,
+    )
+
+    # Load scenario paths for each condition in fixed order, pinned to the same scenario_id.
     scenario_paths = []
     condition_sequence = []  # Track the condition sequence for logging
 
-    for (env, ling) in randomized_conditions:
-        # Get all scenarios for this condition
-        condition_scenarios = available_files[(env, ling)]
-        # Randomly select just ONE scenario from this condition
-        selected_scenario = random.choice(condition_scenarios)
+    for (env, ling) in ordered_conditions:
+        condition = (env, ling)
+        matching = [s for s in available_files[condition] if s['scenario_id'] == selected_shared_id]
+        if not matching:
+            raise FileNotFoundError(
+                f"Missing scenario_id {selected_shared_id} for condition t{env}_l{ling} in {run_set}."
+            )
+        selected_scenario = matching[0]
         scenario_paths.append(selected_scenario['full_path'])
-        condition_sequence.append((env, ling))
-        logger.info(f"Selected scenario for condition t{env}_l{ling}: {selected_scenario['filename']}")
+        condition_sequence.append(condition)
+        logger.info(
+            "Selected scenario for condition t%s_l%s (shared_id=%s): %s",
+            env,
+            ling,
+            selected_shared_id,
+            selected_scenario['filename'],
+        )
 
     # Create full palindrome: forward + reverse
     palindrome_paths = scenario_paths + list(reversed(scenario_paths))
     palindrome_conditions = condition_sequence + list(reversed(condition_sequence))
 
     logger.info(f"Running palindrome behavioral with {len(palindrome_paths)} scenarios")
-    logger.info(f"Condition order: {randomized_conditions} forward + reversed")
+    logger.info(f"Condition order: {ordered_conditions} forward + reversed")
 
     # Record experiment start time
     experiment_start_utc = datetime.utcnow().isoformat() + "Z"
 
     # Run each scenario
+    prev_game_state = None
+    prev_condition = None
     for i, (scenario_path, condition) in enumerate(zip(palindrome_paths, palindrome_conditions)):
         logger.info(f"Running scenario {i + 1}/{len(palindrome_paths)}: {os.path.basename(scenario_path)}")
 
@@ -1367,8 +1506,19 @@ def run_palindrome_behavioral(
         # Ensure Unity has focus before starting the trial
         restore_unity_focus_after_rating(browser)
 
+        # Preserve pose across transitions between different conditions.
+        use_carryover = prev_game_state is not None and prev_condition is not None and condition != prev_condition
+        carryover_state = prev_game_state if use_carryover else None
+        logger.info(
+            "Scenario transition: prev_condition=%s current_condition=%s carryover_enabled=%s",
+            prev_condition,
+            condition,
+            use_carryover,
+        )
+
         trial = Trial(
             scenario_path,
+            state=carryover_state,
             subject_kwargs=subject_kwargs,
             display=display
         )
@@ -1382,9 +1532,8 @@ def run_palindrome_behavioral(
             static_instructions=False,
             deadline=time.time() + 60  # 60 seconds per scenario
         )
-
-        trial_end_time = time.time()
-        logger.info(f"Trial {i + 1} completed in {trial_end_time - start_trial_time:.2f} seconds")
+        prev_game_state = game_state
+        prev_condition = condition
 
         # Clear pygame events before rating prompt
         pygame.event.clear()
@@ -1459,23 +1608,30 @@ def normal_main(
         if not practice_success:
             logger.warning("Buttonbox practice was not fully successful, but continuing with experiment")
 
-    # validate that thr scenario files exist for the specified condition
+    # Scan the runset directory for available scenario files.
     conditions = [(task_difficulty, linguistic_complexity)]
-    files_exist, missing_files, available_files = validate_scenario_files(
+    dir_ok, dir_errors, available_files = validate_scenario_files(
         materials_dir, run_set, conditions
     )
 
-    if not files_exist:
-        logger.error("Missing required scenario files:")
-        for missing in missing_files:
-            logger.error(f"  - {missing}")
-        raise FileNotFoundError(f"Cannot run experiment - missing scenario files: {missing_files}")
+    if not dir_ok:
+        raise FileNotFoundError(
+            f"Cannot run experiment - runset directory not found or unreadable: {dir_errors}"
+        )
 
-    # Build scenario paths using the validated files
+    # Verify the required condition is present; fail clearly if not.
     condition = (task_difficulty, linguistic_complexity)
+    if condition not in available_files or len(available_files[condition]) == 0:
+        raise FileNotFoundError(
+            f"No scenarios found for condition t{task_difficulty}_l{linguistic_complexity} "
+            f"in {os.path.join(materials_dir, run_set)}. Expected files matching: "
+            f"scenario_*_t{task_difficulty}_l{linguistic_complexity}.json"
+        )
+
+    # Build scenario paths using the validated files.
+    # available_files is already sorted by scenario_id, giving a deterministic order.
     scenario_data = available_files[condition]
     scenario_paths = [scenario['full_path'] for scenario in scenario_data]
-    scenario_paths = list(np.random.permutation(scenario_paths))
 
     if n_trials:
         scenario_paths = scenario_paths[:n_trials]
@@ -1597,3 +1753,4 @@ if __name__ == "__main__":
     if excp is not None:
         raise excp
     time.sleep(2)
+
